@@ -1,3 +1,6 @@
+//	AUTHOR: MING TAI HA
+
+
 #include "my_pthread_t.h"
 #include <ucontext.h>
 #include <stdio.h>

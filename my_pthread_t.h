@@ -1,3 +1,6 @@
+//	AUTHOR: MING TAI HA
+
+
 #ifndef MY_PTHREAD_T_H
 #define MY_PTHREAD_T_H
 
