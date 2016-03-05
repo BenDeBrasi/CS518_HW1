@@ -8,7 +8,7 @@
 #include <stdlib.h>
 
 #define NUM_THREADS 10
-#define STACK_SIZE 1024
+#define STACK_SIZE 16384
 #define NUM_LEVELS 5
 #define NUM_LOCKS 1
 
@@ -27,9 +27,9 @@
 */
 
 typedef enum state {
+	NEW,
 	READY,
 	RUNNING,
-	SCHEDULED,
 	WAITING,
 	TERMINATED
 } state;

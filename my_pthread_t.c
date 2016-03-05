@@ -109,7 +109,7 @@ void sched_init() {
 	sched->num_sched = 0;
 
 	sched->thr_main->thr_id = 0;
-	sched->thr_main->thr_state = READY;
+	sched->thr_main->thr_state = NEW;
 	sched->thr_main->next_thr = sched->thr_main;
 	sched->thr_cur = NULL;
 }
@@ -125,7 +125,7 @@ void sched_addThread(mypthread_t * thr_node, int priority) {
 		printf("The priority is not within the Multi-Level Priority Queue.\n");
 	} else {
 		printf("Adding thread to level %d\n", priority);
-		thr_node->thr_state = SCHEDULED;
+		thr_node->thr_state = READY;
 		enqueue(&(sched->mlpq[priority]), thr_node);
 		sched->num_sched++;
 	}
@@ -177,16 +177,18 @@ int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*fun
 	*/
 	if(getcontext(&(thread->ucp)) == -1) {
 		printf("getcontext error\n");
+		return -1;
 	}
 	
-	char func_stack[1024];
-	thread->ucp.uc_stack.ss_sp = func_stack;
-	thread->ucp.uc_stack.ss_size = sizeof(func_stack);
+	thread->ucp.uc_stack.ss_sp = malloc(STACK_SIZE); //func_stack
+	thread->ucp.uc_stack.ss_size = STACK_SIZE;
+	thread->ucp.uc_link = &(sched->thr_main->ucp);
 	printf("Allocating the stack\n");
 	makecontext(&(thread->ucp), (void *)run_thread, 3, thread, function, arg);
 	printf("Made Context\n");
 	sched_addThread(thread, 0);
 	printf("Added Thread to the Scheduler.\n");
+	return 0;
 }
 
 void my_pthread_yield() {
@@ -240,15 +242,24 @@ void f1(void) {
 	for(j = 0; j < 10; j++) {
 		printf("Number: %d\n", j);
 	}
+	printf("Function f1 Done\n");
 }
 
+void f2(void) {
+
+	int j;
+
+	for(j = 100; j < 125; j++) {
+		printf("Number: %d\n", j);
+	}
+	printf("Function f2 done\n");
+}
 
 int main() {
 
-/*
-
 	//	Code to test queue class
 
+/*
 
 	queue * t_queue;
 	t_queue = malloc(sizeof(queue));
@@ -304,6 +315,7 @@ int main() {
 
 	//	Code to test Scheduler mechanisms
 
+/*
 	long int i;
 	long int j;
 	mypthread_t * test_thread;
@@ -353,26 +365,73 @@ int main() {
 	free(thr_list);
 	printf("Freeing scheduler\n");	
 	free(sched);
-/*
+*/
+
+	//	Code for testing pthreads
+
+
 	printf("Starting Testing\n");
 
-	mypthread_t * test_thread;
-	test_thread = malloc(sizeof(pthread_t));
+
+	printf("Allocating space for the thread array\n");
+	thr_list = malloc(NUM_THREADS * sizeof(mypthread_t));
+	printf("Initializing the Scheduler\n");
+	sched_init();
+	
+	printf("Initializing thread\n");
+
+	long int i;
+	long int j;
+	mypthread_t * test_thread1;
+	mypthread_t * test_thread2;
+	test_thread1 = malloc(sizeof(mypthread_t));
+	test_thread2 = malloc(sizeof(mypthread_t));
+	test_thread1->thr_id = 1;
+	test_thread2->thr_id = 123;
+
+	mypthread_t * sched_thread;
+
 	mypthread_attr_t * test_thread_attr;
-	void * arguments = 0;
+	void * arguments = NULL;
 
-	printf("Created Thread. Executing my_pthread_create.\n");
+	printf("Creating Thread 1\n");
 
-	if (my_pthread_create(test_thread, test_thread_attr, (void *(*)(void *))f1, arguments) != 0) {
-		printf("Error creating pthread\n");
+	if (my_pthread_create(test_thread1, test_thread_attr, (void *(*)(void *))f1, arguments) != 0) {
+		printf("Error creating pthread 1\n");
 	}
 
+	printf("Creating Thread 2\n");
+
+	if (my_pthread_create(test_thread2, test_thread_attr, (void *(*)(void *))f2, arguments) != 0) {
+		printf("Error creating pthread 2\n");
+	}
+
+	printf("Stack Size: %li\n", sched->num_sched);
+	sched_thread = sched_pickThread();
+	printf("Just picked a thread. The ID is %li and the STATE is %d\n", sched_thread->thr_id, sched_thread->thr_state);
+
+	if (swapcontext(&(sched->thr_main->ucp), &(sched_thread->ucp)) == -1) {
+		printf("Error swapping threads\n");
+	}
+
+	sched_thread = sched_pickThread();
+	printf("Just picked a thread. The ID is %li and the STATE is %d\n", sched_thread->thr_id, sched_thread->thr_state);
+
+	printf("Fault before the swap\n");
+	if (swapcontext(&(sched->thr_main->ucp), &(sched_thread->ucp)) == -1) {
+		printf("Error swapping threads\n");
+	}
 	
 	printf("Finished Execution\n");
 
-	free(thr_array);
-	free(thr_attr_array);
-*/
+	sched_thread = NULL;
+	free(thr_list);
+	free(test_thread1);
+	free(test_thread2);
+
+	//free(thr_array);
+	//free(thr_attr_array);
+
 
 	return 0;
 }
