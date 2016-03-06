@@ -146,8 +146,8 @@ mypthread_t * sched_pickThread() {
 			return chosen;
 		}
 	}
-	printf("Nothing to schedule. Returning NULL\n");
-	return NULL;
+	printf("Nothing to schedule. Exit Successfully\n");
+	exit(EXIT_SUCCESS);
 }
 
 void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
@@ -220,6 +220,7 @@ void my_pthread_exit(void * value_ptr) {
 	sched->thr_cur->thr_state = TERMINATED;
 	sched->thr_cur->retval = value_ptr;
 //	sched->num_sched--;
+	my_pthread_yield();
 }
 
 int my_pthread_join(mypthread_t * thread, void ** value_ptr) {
@@ -251,6 +252,9 @@ void f2(void) {
 
 	for(j = 100; j < 125; j++) {
 		printf("Number: %d\n", j);
+		if (j == 115) {
+			my_pthread_exit(NULL);
+		}
 	}
 	printf("Function f2 done\n");
 }
@@ -408,6 +412,7 @@ int main() {
 
 	printf("Stack Size: %li\n", sched->num_sched);
 	sched_thread = sched_pickThread();
+//	sched->thr_cur = sched_thread;
 	printf("Just picked a thread. The ID is %li and the STATE is %d\n", sched_thread->thr_id, sched_thread->thr_state);
 
 	if (swapcontext(&(sched->thr_main->ucp), &(sched_thread->ucp)) == -1) {
@@ -415,6 +420,7 @@ int main() {
 	}
 
 	sched_thread = sched_pickThread();
+//	sched->thr_cur = sched_thread;
 	printf("Just picked a thread. The ID is %li and the STATE is %d\n", sched_thread->thr_id, sched_thread->thr_state);
 
 	printf("Fault before the swap\n");
