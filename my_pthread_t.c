@@ -7,6 +7,9 @@
 
 static scheduler * sched;
 static mypthread_t * thr_list;
+static my_pthread_mutex_t* mutex1;
+static int sharedVariable = 0;
+static int sharedVariable1 = 0;
 
 void queue_init(queue * first) {
 	first = malloc(sizeof(queue));
@@ -354,7 +357,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
 gettid());
         unpark(queue_remove(m->q)); // hold lock (for next thread!)
     m->guard = 0;*/
-    mutex->flag == 0;
+    mutex->flag = 0;
 }
 
 int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
@@ -407,6 +410,94 @@ void f2(void) {
 		}
 	}
 	printf("Function f2 done\n");
+}
+
+void mutexTestOne() {
+	//char *s="That's good news";   
+    int i=0;
+    int localCopy;   
+    FILE *fp;  
+    fp=fopen("test1.dat", "w"); 
+
+    my_pthread_mutex_lock(mutex1);
+    localCopy = sharedVariable;
+    printf("mutexTestOne read the sharedVariable, the value is %d\n", localCopy);
+    while(i<104857600){
+    	fputs("a",fp);
+    	i++;
+    }
+    fflush(fp);
+    localCopy = localCopy+10;
+    sharedVariable = localCopy;
+    printf("mutexTestOne update the sharedVariable, the value now is %d\n", sharedVariable);
+    my_pthread_mutex_unlock(mutex1);
+
+    fclose(fp); 
+}
+
+void mutexTestTwo() {
+	//char *s="That's good news";   
+    int i=0;  
+    int localCopy;    
+    FILE *fp;  
+    fp=fopen("test2.dat", "w"); 
+
+    my_pthread_mutex_lock(mutex1);
+    localCopy = sharedVariable;
+    printf("mutexTestTwo read the sharedVariable, the value is %d\n", localCopy);
+    while(i<104857600){
+    	fputs("a",fp);
+    	i++;
+    }
+    fflush(fp);
+    localCopy = localCopy-5;
+    sharedVariable = localCopy;
+    printf("mutexTestTwo update the sharedVariable, the value now is %d\n", sharedVariable);
+    my_pthread_mutex_unlock(mutex1);
+
+    fclose(fp); 
+}
+
+void noMutexTestOne() {
+	//char *s="That's good news";   
+    int i=0;
+    int localCopy;   
+    FILE *fp;  
+    fp=fopen("test3.dat", "w"); 
+
+    localCopy = sharedVariable1;
+    printf("noMutexTestOne read the sharedVariable, the value is %d\n", localCopy);
+    while(i<104857600){
+    	fputs("a",fp);
+    	i++;
+    }
+    fflush(fp);
+    localCopy = localCopy+10;
+    sharedVariable1 = localCopy;
+    printf("noMutexTestOne update the sharedVariable, the value now is %d\n", sharedVariable1);
+
+    fclose(fp); 
+}
+
+void noMutexTestTwo() {
+	//char *s="That's good news";   
+    int i=0;  
+    int localCopy;    
+    FILE *fp;  
+    fp=fopen("test4.dat", "w"); 
+
+    localCopy = sharedVariable1;
+    printf("noMutexTestTwo read the sharedVariable, the value is %d\n", localCopy);
+    while(i<104857600){
+    	fputs("a",fp);
+    	i++;
+    }
+    fflush(fp);
+    localCopy = localCopy-5;
+    sharedVariable1 = localCopy;
+    printf("noMutexTestTwo update the sharedVariable, the value now is %d\n", sharedVariable1);
+
+    fclose(fp); 
 }
 
 int main() {
@@ -532,6 +623,11 @@ int main() {
 	printf("Initializing the Scheduler\n");
 	sched_init();
 	
+	printf("Initializing the Mutex\n");
+	mutex1 = malloc(sizeof(my_pthread_mutex_t));
+
+	my_pthread_mutex_init(mutex1,NULL);
+
 	printf("Initializing thread\n");
 
 	long int i;
@@ -539,9 +635,17 @@ int main() {
 	mypthread_t * test_thread0;
 	mypthread_t * test_thread1;
 	mypthread_t * test_thread2;
+	mypthread_t * test_thread3;
+	mypthread_t * test_thread4;
+	mypthread_t * test_thread5;
+	mypthread_t * test_thread6;
 	test_thread0 = malloc(sizeof(mypthread_t));
 	test_thread1 = malloc(sizeof(mypthread_t));
 	test_thread2 = malloc(sizeof(mypthread_t));
+	test_thread3 = malloc(sizeof(mypthread_t));
+	test_thread4 = malloc(sizeof(mypthread_t));
+	test_thread5 = malloc(sizeof(mypthread_t));
+	test_thread6 = malloc(sizeof(mypthread_t));
 	test_thread1->thr_id = 1;
 	test_thread2->thr_id = 123;
 
@@ -553,7 +657,7 @@ int main() {
 	printf("Creating Thread 0\n");
 
 	if (my_pthread_create(test_thread0, test_thread_attr, (void *(*)(void *))f0, arguments) != 0) {
-		printf("Error creating pthread 2\n");
+		printf("Error creating pthread 0\n");
 	}
 
 	printf("Creating Thread 1\n");
@@ -568,6 +672,29 @@ int main() {
 		printf("Error creating pthread 2\n");
 	}
 
+	printf("Creating Thread 3\n");
+
+	if (my_pthread_create(test_thread3, test_thread_attr, (void *(*)(void *))mutexTestOne, arguments) != 0) {
+		printf("Error creating pthread 3\n");
+	}
+
+	printf("Creating Thread 4\n");
+
+	if (my_pthread_create(test_thread4, test_thread_attr, (void *(*)(void *))mutexTestTwo, arguments) != 0) {
+		printf("Error creating pthread 4\n");
+	}
+
+	printf("Creating Thread 5\n");
+
+	if (my_pthread_create(test_thread5, test_thread_attr, (void *(*)(void *))noMutexTestOne, arguments) != 0) {
+		printf("Error creating pthread 3\n");
+	}
+
+	printf("Creating Thread 6\n");
+
+	if (my_pthread_create(test_thread6, test_thread_attr, (void *(*)(void *))noMutexTestTwo, arguments) != 0) {
+		printf("Error creating pthread 4\n");
+	}
 	/*printf("Stack Size: %li\n", sched->num_sched);
 	sched_thread = sched_pickThread();
 //	sched->thr_cur = sched_thread;
