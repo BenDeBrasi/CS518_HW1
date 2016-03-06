@@ -2,11 +2,7 @@
 
 
 #include "my_pthread_t.h"
-#include <ucontext.h>
-#include <stdio.h>
-#include <string.h>
-
-#define TESTING 1
+#include <unistd.h>
 
 
 static scheduler * sched;
@@ -72,7 +68,60 @@ char queue_isEmpty(queue * first) {
 	return first->size == 0;
 }
 
+void scheduler_handler(){
+	struct itimerval tick;
+    ucontext_t sched_ctx;
+    
+    //clear the timer
+    tick.it_value.tv_sec = 0;
+    tick.it_value.tv_usec = 0;
+    tick.it_interval.tv_sec = 0;
+    tick.it_interval.tv_usec = 0;
+    setitimer(ITIMER_REAL, &tick, NULL);
+    
+    //printf("Begin scheduling.\n");
+    //schelduling
+    mypthread_t* tmp = sched->thr_cur;
+	if(tmp != NULL){
+		int old_priority = tmp->priority;
+		tmp->time_runs += TIME_QUANTUM;
+		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED){
+			if (tmp->thr_state == TERMINATED){
+				free(tmp);
+			}else{
+				//put the thread back into the queue with the lower priority
+				int new_priority = (tmp->priority+1) > (NUM_LEVELS-1) ? (NUM_LEVELS-1) : (tmp->priority+1);
+				sched_addThread(tmp, new_priority);
+			}
+			//pick another thread out and run
+			if((sched->thr_cur = sched_pickThread()) != NULL){
+				sched->thr_cur->thr_state = RUNNING;
+			} 
+		}
+	}else{
+		//pick another thread out and run
+		if((sched->thr_cur = sched_pickThread()) != NULL){
+			sched->thr_cur->thr_state = RUNNING;
+		} 
+	}
 
+	//set timer
+    tick.it_value.tv_sec = 0;
+    tick.it_value.tv_usec = 50000;
+    tick.it_interval.tv_sec = 0;
+    tick.it_interval.tv_usec = 0;
+
+    setitimer(ITIMER_REAL, &tick, NULL);
+
+    //if(tmp != NULL){
+    	//getcontext(&sched_ctx);
+    	//tmp->ucp = sched_ctx;
+	//}
+    
+    if(sched->thr_cur != NULL)
+    	swapcontext(&sched_ctx, &(sched->thr_cur->ucp));
+    return;
+}
 
 void sched_init() {
 	/*
@@ -82,7 +131,7 @@ void sched_init() {
 			timings which define the length of the runtime cycles, a cleanly
 			allocated main thread, and a counter for the threads assigned.
 	
-		MING:: The reason why the scheduler should contain the main context is so the
+		MING:: The r4eason why the scheduler should contain the main context is so the
 			scheduler can be instantiated first before creating the first mypthread_t.
 			Making the first mypthread requires a uclink, which would be the main context.
 			Moreover, the scheduler should exist such that any thread can be scheduled
@@ -103,7 +152,7 @@ void sched_init() {
 		queue_init((sched->wait) + j);
 	}
 	for (k = 0; k < NUM_LEVELS; k++) {	// This is a temporary placeholder
-		sched->prior_list[k] = k + 1;	// for storing scheduling times
+		sched->prior_list[k] = TIME_QUANTUM * (k+1);	// for storing scheduling times, could be logrithm
 	}
 	
 	sched->num_sched = 0;
@@ -112,6 +161,9 @@ void sched_init() {
 	sched->thr_main->thr_state = NEW;
 	sched->thr_main->next_thr = sched->thr_main;
 	sched->thr_cur = NULL;
+
+	signal(SIGALRM, scheduler_handler);
+	scheduler_handler();
 }
 
 void sched_addThread(mypthread_t * thr_node, int priority) {
@@ -126,6 +178,8 @@ void sched_addThread(mypthread_t * thr_node, int priority) {
 	} else {
 		printf("Adding thread to level %d\n", priority);
 		thr_node->thr_state = READY;
+		thr_node->priority = priority; // keeptrack of the priority of the thread
+		thr_node->time_runs = 0; // reset the running time of the thread
 		enqueue(&(sched->mlpq[priority]), thr_node);
 		sched->num_sched++;
 	}
@@ -165,7 +219,7 @@ void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
 		thr_node->thr_state = TERMINATED;
 //		sched->num_sched--;
 	}
-
+	scheduler_handler();
 }
 
 int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*function)(void *), void * arg) {
@@ -175,14 +229,23 @@ int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*fun
 			run_thread. run_thread is a function that handles the running of the
 			function with the arg fed to make the context when scheduled to run
 	*/
+	//ucontext_t sched_ctx;
+
 	if(getcontext(&(thread->ucp)) == -1) {
 		printf("getcontext error\n");
 		return -1;
 	}
+
+	//if(getcontext(&sched_ctx) == -1) {
+		//printf("getcontext error\n");
+		//return -1;
+	//}
 	
+	//makecontext(&sched_ctx, (void *)run_thread, 0);
+
 	thread->ucp.uc_stack.ss_sp = malloc(STACK_SIZE); //func_stack
 	thread->ucp.uc_stack.ss_size = STACK_SIZE;
-	thread->ucp.uc_link = &(sched->thr_main->ucp);
+	//thread->ucp.uc_link = &sched_ctx;//&(sched->thr_main->ucp);
 	printf("Allocating the stack\n");
 	makecontext(&(thread->ucp), (void *)run_thread, 3, thread, function, arg);
 	printf("Made Context\n");
@@ -196,15 +259,22 @@ void my_pthread_yield() {
 		This function swaps the current thread and runs another thread from the scheduler.
 			The current function waits. 
 	*/
-	mypthread_t * tmp;
+	//mypthread_t * tmp;
 	printf("Printing Scheduler Attributes\n");
-	tmp = sched->thr_cur;
-	sched->thr_cur = sched_pickThread();
-	//Add tmp to wait queue
-	tmp->thr_state = WAITING;
-	//TODO: Implement Wait Queue
-	sched->thr_cur->thr_state = RUNNING;
-	swapcontext(&(sched->thr_cur->ucp), &(tmp->ucp));
+	//tmp = sched->thr_cur;
+
+	// call the scheduler
+    sched->thr_cur->thr_state = YIELD;
+	scheduler_handler();
+
+	//degrade and put back to the running queue
+	//int new_priority = (tmp->priority+1)>NUM_LEVELS ? NUM_LEVELS:(tmp->priority+1);
+	//sched_addThread(tmp, new_priority);
+
+	//sched->thr_cur = sched_pickThread();
+	
+	//sched->thr_cur->thr_state = RUNNING;
+	//swapcontext(&(tmp->ucp), &(sched->thr_cur->ucp));
 }
 
 void my_pthread_exit(void * value_ptr) {
@@ -219,8 +289,12 @@ void my_pthread_exit(void * value_ptr) {
 	}
 	sched->thr_cur->thr_state = TERMINATED;
 	sched->thr_cur->retval = value_ptr;
+
+	// call the scheduler
+	scheduler_handler();
+
 //	sched->num_sched--;
-	my_pthread_yield();
+	//my_pthread_yield();
 }
 
 int my_pthread_join(mypthread_t * thread, void ** value_ptr) {
@@ -234,7 +308,68 @@ int my_pthread_join(mypthread_t * thread, void ** value_ptr) {
 	thread->retval = value_ptr;
 }
 
+int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr){
+    int result = 0;
+
+    if(mutex == NULL)
+        return EINVAL;
+
+    mutex->flag  = 0;
+    mutex->guard = 0;
+    //queue_init(m->q);
+
+    return result;
+}
+
+int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
+    /*while (__sync_lock_test_and_set(mutex->guard, 1) == 1)
+        ; //acquire guard lock by spinning
+    if (mutex->flag == 0) {
+        mutex->flag = 1; //
+        mutex->guard = 0; 
+    }else{
+        //queue_add(m->q,
+        m->guard = 0;
+        setPark();
+    }
+    //yield()*/
+    /*while(mutex->flag == 1){
+        //my_pthread_yield();
+    }*/
+    while (__sync_lock_test_and_set(&(mutex->flag), 1) == 1){
+    	my_pthread_yield();
+    }
+}
+
+int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
+    /*while (TestAndSet(&m->guard, 1) == 1)
+        ; //acquire guard lock by spinning
+    if (queue_empty(m->q))
+        m->flag = 0; // let go of lock; no one wants it
+    else
+gettid());
+        unpark(queue_remove(m->q)); // hold lock (for next thread!)
+    m->guard = 0;*/
+    mutex->flag == 0;
+}
+
+int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
+    int result = 0;
+
+    if(mutex == NULL)
+        return EINVAL;
+    if(mutex->flag != 0)
+        return EBUSY;
+    return result;
+}
+
 #if TESTING
+
+void f0(void) {
+	printf("Function f0 start\n");
+	sleep(5);
+	printf("Function f0 done\n");
+}
 
 void f1(void) {
 
@@ -386,8 +521,10 @@ int main() {
 
 	long int i;
 	long int j;
+	mypthread_t * test_thread0;
 	mypthread_t * test_thread1;
 	mypthread_t * test_thread2;
+	test_thread0 = malloc(sizeof(mypthread_t));
 	test_thread1 = malloc(sizeof(mypthread_t));
 	test_thread2 = malloc(sizeof(mypthread_t));
 	test_thread1->thr_id = 1;
@@ -397,6 +534,12 @@ int main() {
 
 	mypthread_attr_t * test_thread_attr;
 	void * arguments = NULL;
+
+	printf("Creating Thread 0\n");
+
+	if (my_pthread_create(test_thread0, test_thread_attr, (void *(*)(void *))f0, arguments) != 0) {
+		printf("Error creating pthread 2\n");
+	}
 
 	printf("Creating Thread 1\n");
 
@@ -410,7 +553,7 @@ int main() {
 		printf("Error creating pthread 2\n");
 	}
 
-	printf("Stack Size: %li\n", sched->num_sched);
+	/*printf("Stack Size: %li\n", sched->num_sched);
 	sched_thread = sched_pickThread();
 //	sched->thr_cur = sched_thread;
 	printf("Just picked a thread. The ID is %li and the STATE is %d\n", sched_thread->thr_id, sched_thread->thr_state);
@@ -433,11 +576,12 @@ int main() {
 	sched_thread = NULL;
 	free(thr_list);
 	free(test_thread1);
-	free(test_thread2);
+	free(test_thread2);*/
 
 	//free(thr_array);
 	//free(thr_attr_array);
 
+	while(1);
 
 	return 0;
 }

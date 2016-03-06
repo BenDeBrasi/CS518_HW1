@@ -6,11 +6,20 @@
 
 #include <ucontext.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <sys/time.h>
+#include <signal.h>
+#include <ucontext.h>
+#include <stdio.h>
+#include <string.h>
+
+#define TESTING 1
 
 #define NUM_THREADS 10
 #define STACK_SIZE 16384
 #define NUM_LEVELS 5
 #define NUM_LOCKS 1
+#define TIME_QUANTUM 50000   
 
 
 // DEFINING THREAD STATES
@@ -31,7 +40,8 @@ typedef enum state {
 	READY,
 	RUNNING,
 	WAITING,
-	TERMINATED
+	TERMINATED,
+	YIELD
 } state;
 
 //	Defining Structs
@@ -52,6 +62,7 @@ typedef struct mypthread_t {
 	state thr_state;
 	long int thr_id;
 	int num_runs;
+	int time_runs;
 	int priority;
 	void * retval;
 
@@ -125,12 +136,29 @@ typedef struct {
 
 } scheduler;
 
+struct pthread_mutex {
+  volatile int flag;                 
+  volatile int guard;                
+  mypthread_t owner;          // Thread owning the mutex
+  //queue *plist;
+  //handle_t event;           // Mutex release notification to waiting threads
+};
+
+typedef struct pthread_mutex my_pthread_mutex_t;
+
 // Basic PTHREADS API
 
 int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*function)(void *), void * arg);
 void my_pthread_yield();
 void my_pthread_exit(void * value_ptr);
 int my_pthread_join(mypthread_t * thread, void ** value_ptr);
+
+// Mutex API
+
+int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr);
+int my_pthread_mutex_lock(my_pthread_mutex_t *mutex);
+int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex);
+int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex);
 
 // Auxiliary Functions
 
