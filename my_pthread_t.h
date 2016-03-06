@@ -12,6 +12,7 @@
 #include <ucontext.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 #define TESTING 1
 
@@ -65,7 +66,9 @@ typedef struct mypthread_t {
 	int time_runs;
 	int priority;
 	void * retval;
-
+	long int start_tt;
+	long int last_exe_tt;
+	long int end_tt;
 } mypthread_t;
 
 /*	
@@ -140,7 +143,7 @@ struct pthread_mutex {
   volatile int flag;                 
   volatile int guard;                
   mypthread_t owner;          // Thread owning the mutex
-  //queue *plist;
+  queue*  wait;
   //handle_t event;           // Mutex release notification to waiting threads
 };
 
