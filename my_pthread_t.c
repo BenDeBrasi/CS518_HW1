@@ -118,7 +118,10 @@ void scheduler_handler(){
 	//}
     
     if(sched->thr_cur != NULL){
-    	swapcontext(&sched_ctx, &(sched->thr_cur->ucp));
+    	if( tmp != NULL)
+    		swapcontext(&(tmp->ucp), &(sched->thr_cur->ucp));
+    	else
+    		swapcontext(&sched_ctx, &(sched->thr_cur->ucp));
     }
     return;
 }
@@ -368,7 +371,18 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
 
 void f0(void) {
 	printf("Function f0 start\n");
-	sleep(5);
+	//char *s="That's good news";   
+    int i=0;   
+    FILE *fp;  
+    fp=fopen("test.dat", "w"); 
+
+    while(i<104857600){
+    	fputs("a",fp);
+    	i++;
+    }
+
+    fflush(fp);
+    fclose(fp); 
 	printf("Function f0 done\n");
 }
 
