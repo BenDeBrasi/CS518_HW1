@@ -4,15 +4,23 @@
 #include "my_pthread_t.h"
 #include <unistd.h>
 
-
+static long int thr_id = 0;
+static long int age_threshold = 1000000; // microsecond
 static scheduler * sched;
 static mypthread_t * thr_list;
 static my_pthread_mutex_t* mutex1;
 static int sharedVariable = 0;
 static int sharedVariable1 = 0;
 
+
+long int get_time_stamp(){
+	 struct timeval current_time;
+	 gettimeofday(&current_time, NULL);
+	 return 1000000 * current_time.tv_sec + current_time.tv_usec;
+}
+
 void queue_init(queue * first) {
-	first = malloc(sizeof(queue));
+	//first = malloc(sizeof(queue));
 	first->head = NULL;
 	first->tail = NULL;
 	first->size = 0;
@@ -87,9 +95,12 @@ void scheduler_handler(){
 	if(tmp != NULL){
 		int old_priority = tmp->priority;
 		tmp->time_runs += TIME_QUANTUM;
-		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED){
+		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED 
+			|| tmp->thr_state == WAITING){
 			if (tmp->thr_state == TERMINATED){
 				free(tmp);
+			}else if(tmp->thr_state == WAITING){
+				//do nothing, the thread is already in the wait queue of the mutex
 			}else{
 				//put the thread back into the queue with the lower priority
 				int new_priority = (tmp->priority+1) > (NUM_LEVELS-1) ? (NUM_LEVELS-1) : (tmp->priority+1);
@@ -182,7 +193,7 @@ void sched_addThread(mypthread_t * thr_node, int priority) {
 	if (priority < 0 || priority >= NUM_LEVELS) {
 		printf("The priority is not within the Multi-Level Priority Queue.\n");
 	} else {
-		printf("Adding thread to level %d\n", priority);
+		printf("Adding thread %d to level %d\n", thr_node->thr_id, priority);
 		thr_node->thr_state = READY;
 		thr_node->priority = priority; // keeptrack of the priority of the thread
 		thr_node->time_runs = 0; // reset the running time of the thread
@@ -201,7 +212,7 @@ mypthread_t * sched_pickThread() {
 	for (i = 0; i < NUM_LEVELS; i++) {
 		if (sched->mlpq[i].head != NULL) {
 			mypthread_t * chosen = dequeue(&(sched->mlpq[i])); 
-			printf("Found a thread to schedule in level %d\n", i);
+			printf("Found a thread to schedule in level %d, thread id: %d\n", i, chosen->thr_id);
 			sched->num_sched--;
 			return chosen;
 		}
@@ -253,6 +264,7 @@ int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*fun
 	thread->ucp.uc_stack.ss_sp = malloc(STACK_SIZE); //func_stack
 	thread->ucp.uc_stack.ss_size = STACK_SIZE;
 	//thread->ucp.uc_link = &sched_ctx;//&(sched->thr_main->ucp);
+	thread->thr_id = thr_id++;
 	printf("Allocating the stack\n");
 	makecontext(&(thread->ucp), (void *)run_thread, 3, thread, function, arg);
 	printf("Made Context\n");
@@ -323,7 +335,8 @@ int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *
 
     mutex->flag  = 0;
     mutex->guard = 0;
-    //queue_init(m->q);
+    mutex->wait = malloc(sizeof(queue));
+    queue_init(mutex->wait);
 
     return result;
 }
@@ -344,7 +357,11 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
         //my_pthread_yield();
     }*/
     while (__sync_lock_test_and_set(&(mutex->flag), 1) == 1){
-    	my_pthread_yield();
+    	//my_pthread_yield();
+    	sched->thr_cur->thr_state = WAITING;
+    	printf("The thread is waiting for a mutex, put it to the waiting list\n");
+    	enqueue(mutex->wait, sched->thr_cur);
+    	scheduler_handler();
     }
 }
 
@@ -357,6 +374,12 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
 gettid());
         unpark(queue_remove(m->q)); // hold lock (for next thread!)
     m->guard = 0;*/
+    mypthread_t * chosen;
+    if (mutex->wait->head != NULL) {
+		chosen = dequeue(mutex->wait); 
+		printf("Mutex is available, select one thread from the waiting list and put it back to the running queue\n");
+		sched_addThread(chosen, chosen->priority);
+	}
     mutex->flag = 0;
 }
 
@@ -646,8 +669,6 @@ int main() {
 	test_thread4 = malloc(sizeof(mypthread_t));
 	test_thread5 = malloc(sizeof(mypthread_t));
 	test_thread6 = malloc(sizeof(mypthread_t));
-	test_thread1->thr_id = 1;
-	test_thread2->thr_id = 123;
 
 	mypthread_t * sched_thread;
 
@@ -722,6 +743,8 @@ int main() {
 
 	//free(thr_array);
 	//free(thr_attr_array);
+	long int test= get_time_stamp();
+	printf("timestamp: %ld\n", test);
 
 	while(1);
 
