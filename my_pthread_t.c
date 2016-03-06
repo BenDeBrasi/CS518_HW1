@@ -79,7 +79,6 @@ void scheduler_handler(){
     tick.it_interval.tv_usec = 0;
     setitimer(ITIMER_REAL, &tick, NULL);
     
-    //printf("Begin scheduling.\n");
     //schelduling
     mypthread_t* tmp = sched->thr_cur;
 	if(tmp != NULL){
@@ -118,8 +117,9 @@ void scheduler_handler(){
     	//tmp->ucp = sched_ctx;
 	//}
     
-    if(sched->thr_cur != NULL)
+    if(sched->thr_cur != NULL){
     	swapcontext(&sched_ctx, &(sched->thr_cur->ucp));
+    }
     return;
 }
 
@@ -200,8 +200,9 @@ mypthread_t * sched_pickThread() {
 			return chosen;
 		}
 	}
-	printf("Nothing to schedule. Exit Successfully\n");
-	exit(EXIT_SUCCESS);
+	printf("Nothing to schedule. return NULL;\n");
+	//exit(EXIT_SUCCESS);
+	return NULL;
 }
 
 void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
