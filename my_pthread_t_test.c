@@ -4,23 +4,13 @@
 #include "my_pthread_t.h"
 #include <unistd.h>
 
-static long int thr_id = 0;
-static long int check_flag = 0;
+
 static scheduler * sched;
 static mypthread_t * thr_list;
-static my_pthread_mutex_t* mutex1;
-static int sharedVariable = 0;
-static int sharedVariable1 = 0;
-
-
-long int get_time_stamp(){
-	 struct timeval current_time;
-	 gettimeofday(&current_time, NULL);
-	 return 1000000 * current_time.tv_sec + current_time.tv_usec;
-}
+static mypthread_t * thr_list_second;
 
 void queue_init(queue * first) {
-	//first = malloc(sizeof(queue));
+	first = malloc(sizeof(queue));
 	first->head = NULL;
 	first->tail = NULL;
 	first->size = 0;
@@ -89,49 +79,15 @@ void scheduler_handler(){
     tick.it_interval.tv_sec = 0;
     tick.it_interval.tv_usec = 0;
     setitimer(ITIMER_REAL, &tick, NULL);
-
-    //perform aging
-    if(check_flag++ >= CHECK_FREQUENCY){
-    	int i;
-    	check_flag = 0;
-    	long int current_time = get_time_stamp();
-    	for (i = 1; i < NUM_LEVELS; i++) {
-			if (sched->mlpq[i].head != NULL) {
-				mypthread_t* tmp = sched->mlpq[i].head;
-				mypthread_t* parent = NULL;
-				while(tmp != NULL){
-					if(current_time - tmp->last_exe_tt >= AGE_THRESHOLD){
-						//delete from current queue
-						if(parent == NULL){
-							sched->mlpq[i].head = tmp->next_thr;
-						}else{
-							parent->next_thr = tmp->next_thr;
-						}
-						//put the thread to the highest queue
-						sched_addThread(tmp, 0);
-					}else{
-						parent = tmp;
-					}
-					tmp = tmp->next_thr;
-				}
-			}
-		}
-    }
     
     //schelduling
     mypthread_t* tmp = sched->thr_cur;
 	if(tmp != NULL){
 		int old_priority = tmp->priority;
 		tmp->time_runs += TIME_QUANTUM;
-		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED 
-			|| tmp->thr_state == WAITING){
+		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED){
 			if (tmp->thr_state == TERMINATED){
-				free(tmp);
-			}else if(tmp->thr_state == WAITING){
-				//do nothing, the thread is already in the wait queue of the mutex
-			}else if(tmp->thr_state == YIELD){
-				//put the thread back into the original queue
-				sched_addThread(tmp, tmp->priority);
+//				free(tmp);
 			}else{
 				//put the thread back into the queue with the lower priority
 				int new_priority = (tmp->priority+1) > (NUM_LEVELS-1) ? (NUM_LEVELS-1) : (tmp->priority+1);
@@ -163,10 +119,6 @@ void scheduler_handler(){
 	//}
     
     if(sched->thr_cur != NULL){
-    	if(sched->thr_cur->first_exe_tt == 0){
-    		sched->thr_cur->first_exe_tt = get_time_stamp();
-    	}
-    	sched->thr_cur->last_exe_tt = get_time_stamp();
     	if( tmp != NULL)
     		swapcontext(&(tmp->ucp), &(sched->thr_cur->ucp));
     	else
@@ -228,7 +180,7 @@ void sched_addThread(mypthread_t * thr_node, int priority) {
 	if (priority < 0 || priority >= NUM_LEVELS) {
 		printf("The priority is not within the Multi-Level Priority Queue.\n");
 	} else {
-		printf("Adding thread %d to level %d\n", thr_node->thr_id, priority);
+		printf("Adding thread to level %d\n", priority);
 		thr_node->thr_state = READY;
 		thr_node->priority = priority; // keeptrack of the priority of the thread
 		thr_node->time_runs = 0; // reset the running time of the thread
@@ -247,7 +199,7 @@ mypthread_t * sched_pickThread() {
 	for (i = 0; i < NUM_LEVELS; i++) {
 		if (sched->mlpq[i].head != NULL) {
 			mypthread_t * chosen = dequeue(&(sched->mlpq[i])); 
-			printf("Found a thread to schedule in level %d, thread id: %d\n", i, chosen->thr_id);
+			printf("Found a thread to schedule in level %d\n", i);
 			sched->num_sched--;
 			return chosen;
 		}
@@ -272,7 +224,6 @@ void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
 		thr_node->thr_state = TERMINATED;
 //		sched->num_sched--;
 	}
-	sched->thr_cur->end_tt=get_time_stamp();
 	scheduler_handler();
 }
 
@@ -300,9 +251,6 @@ int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*fun
 	thread->ucp.uc_stack.ss_sp = malloc(STACK_SIZE); //func_stack
 	thread->ucp.uc_stack.ss_size = STACK_SIZE;
 	//thread->ucp.uc_link = &sched_ctx;//&(sched->thr_main->ucp);
-	thread->thr_id = thr_id++;
-	thread->start_tt = get_time_stamp();
-	thread->first_exe_tt = 0;
 	printf("Allocating the stack\n");
 	makecontext(&(thread->ucp), (void *)run_thread, 3, thread, function, arg);
 	printf("Made Context\n");
@@ -346,7 +294,7 @@ void my_pthread_exit(void * value_ptr) {
 	}
 	sched->thr_cur->thr_state = TERMINATED;
 	sched->thr_cur->retval = value_ptr;
-	sched->thr_cur->end_tt=get_time_stamp();
+
 	// call the scheduler
 	scheduler_handler();
 
@@ -373,8 +321,7 @@ int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *
 
     mutex->flag  = 0;
     mutex->guard = 0;
-    mutex->wait = malloc(sizeof(queue));
-    queue_init(mutex->wait);
+    //queue_init(m->q);
 
     return result;
 }
@@ -395,11 +342,7 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
         //my_pthread_yield();
     }*/
     while (__sync_lock_test_and_set(&(mutex->flag), 1) == 1){
-    	//my_pthread_yield();
-    	sched->thr_cur->thr_state = WAITING;
-    	printf("The thread is waiting for a mutex, put it to the waiting list\n");
-    	enqueue(mutex->wait, sched->thr_cur);
-    	scheduler_handler();
+    	my_pthread_yield();
     }
 }
 
@@ -412,13 +355,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
 gettid());
         unpark(queue_remove(m->q)); // hold lock (for next thread!)
     m->guard = 0;*/
-    mypthread_t * chosen;
-    if (mutex->wait->head != NULL) {
-		chosen = dequeue(mutex->wait); 
-		printf("Mutex is available, select one thread from the waiting list and put it back to the running queue\n");
-		sched_addThread(chosen, chosen->priority);
-	}
-    mutex->flag = 0;
+    mutex->flag == 0;
 }
 
 int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
@@ -433,6 +370,24 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
 
 #if TESTING
 
+void test(int cap) {
+
+	int i, j;
+	int test;
+	test = 1;
+	for (i = 1; i < cap; i++) {
+		for (j = 1; j < i; j++) {
+			if (i % j == 0) {
+				continue;
+			}
+			if (j == i - 1) {
+				test = i;
+			}
+		}
+	}
+	printf("Final Test: %d\n", test);
+}
+
 void f0(void) {
 	printf("Function f0 start\n");
 	//char *s="That's good news";   
@@ -440,8 +395,8 @@ void f0(void) {
     FILE *fp;  
     fp=fopen("test.dat", "w"); 
 
-    while(i<104857600){
-    	fputs("a",fp);
+    while(i<100000000){
+    	fputs("THIS IS A DUMMY FILE\n",fp);
     	i++;
     }
 
@@ -473,92 +428,31 @@ void f2(void) {
 	printf("Function f2 done\n");
 }
 
-void mutexTestOne() {
-	//char *s="That's good news";   
-    int i=0;
-    int localCopy;   
-    FILE *fp;  
-    fp=fopen("test1.dat", "w"); 
+void more_Threads() {
 
-    my_pthread_mutex_lock(mutex1);
-    localCopy = sharedVariable;
-    printf("mutexTestOne read the sharedVariable, the value is %d\n", localCopy);
-    while(i<104857600){
-    	fputs("a",fp);
-    	i++;
-    }
-    fflush(fp);
-    localCopy = localCopy+10;
-    sharedVariable = localCopy;
-    printf("mutexTestOne update the sharedVariable, the value now is %d\n", sharedVariable);
-    my_pthread_mutex_unlock(mutex1);
+	time_t t;
+	long int i;
+	long int base = 100;
+	long int random_sec[NUM_THREADS];
+	mypthread_attr_t * thread_attr;
+	thread_attr = NULL;
 
-    fclose(fp); 
-}
+	sched_init();
+	srand((unsigned) time(&t));
 
-void mutexTestTwo() {
-	//char *s="That's good news";   
-    int i=0;  
-    int localCopy;    
-    FILE *fp;  
-    fp=fopen("test2.dat", "w"); 
 
-    my_pthread_mutex_lock(mutex1);
-    localCopy = sharedVariable;
-    printf("mutexTestTwo read the sharedVariable, the value is %d\n", localCopy);
-    while(i<104857600){
-    	fputs("a",fp);
-    	i++;
-    }
-    fflush(fp);
-    localCopy = localCopy-5;
-    sharedVariable = localCopy;
-    printf("mutexTestTwo update the sharedVariable, the value now is %d\n", sharedVariable);
-    my_pthread_mutex_unlock(mutex1);
+	for (i = 0; i < NUM_THREADS; i++) {
+		random_sec[i] = rand() % 1000 * base;
+		printf("Random Number %li\n", random_sec[i]);
+	}	
 
-    fclose(fp); 
-}
+	thr_list_second = malloc(NUM_THREADS * sizeof(mypthread_t));
+	for (i = 0; i < NUM_THREADS; i++) {
+		if (my_pthread_create(&thr_list_second[i], thread_attr, (void *(*)(void *))test, (void *)random_sec[i]) != 0) {
+			printf("Error Creating Thread %li\n", i);
+		}
+	}
 
-void noMutexTestOne() {
-	//char *s="That's good news";   
-    int i=0;
-    int localCopy;   
-    FILE *fp;  
-    fp=fopen("test3.dat", "w"); 
-
-    localCopy = sharedVariable1;
-    printf("noMutexTestOne read the sharedVariable, the value is %d\n", localCopy);
-    while(i<104857600){
-    	fputs("a",fp);
-    	i++;
-    }
-    fflush(fp);
-    localCopy = localCopy+10;
-    sharedVariable1 = localCopy;
-    printf("noMutexTestOne update the sharedVariable, the value now is %d\n", sharedVariable1);
-
-    fclose(fp); 
-}
-
-void noMutexTestTwo() {
-	//char *s="That's good news";   
-    int i=0;  
-    int localCopy;    
-    FILE *fp;  
-    fp=fopen("test4.dat", "w"); 
-
-    localCopy = sharedVariable1;
-    printf("noMutexTestTwo read the sharedVariable, the value is %d\n", localCopy);
-    while(i<104857600){
-    	fputs("a",fp);
-    	i++;
-    }
-    fflush(fp);
-    localCopy = localCopy-5;
-    sharedVariable1 = localCopy;
-    printf("noMutexTestTwo update the sharedVariable, the value now is %d\n", sharedVariable1);
-
-    fclose(fp); 
 }
 
 int main() {
@@ -675,7 +569,7 @@ int main() {
 
 	//	Code for testing pthreads
 
-
+/*
 	printf("Starting Testing\n");
 
 
@@ -684,11 +578,6 @@ int main() {
 	printf("Initializing the Scheduler\n");
 	sched_init();
 	
-	printf("Initializing the Mutex\n");
-	mutex1 = malloc(sizeof(my_pthread_mutex_t));
-
-	my_pthread_mutex_init(mutex1,NULL);
-
 	printf("Initializing thread\n");
 
 	long int i;
@@ -696,17 +585,11 @@ int main() {
 	mypthread_t * test_thread0;
 	mypthread_t * test_thread1;
 	mypthread_t * test_thread2;
-	mypthread_t * test_thread3;
-	mypthread_t * test_thread4;
-	mypthread_t * test_thread5;
-	mypthread_t * test_thread6;
 	test_thread0 = malloc(sizeof(mypthread_t));
 	test_thread1 = malloc(sizeof(mypthread_t));
 	test_thread2 = malloc(sizeof(mypthread_t));
-	test_thread3 = malloc(sizeof(mypthread_t));
-	test_thread4 = malloc(sizeof(mypthread_t));
-	test_thread5 = malloc(sizeof(mypthread_t));
-	test_thread6 = malloc(sizeof(mypthread_t));
+	test_thread1->thr_id = 1;
+	test_thread2->thr_id = 123;
 
 	mypthread_t * sched_thread;
 
@@ -715,8 +598,8 @@ int main() {
 
 	printf("Creating Thread 0\n");
 
-	if (my_pthread_create(test_thread0, test_thread_attr, (void *(*)(void *))f0, arguments) != 0) {
-		printf("Error creating pthread 0\n");
+	if (my_pthread_create(test_thread0, test_thread_attr, (void *(*)(void *))test, arguments) != 0) {
+		printf("Error creating pthread 2\n");
 	}
 
 	printf("Creating Thread 1\n");
@@ -731,29 +614,9 @@ int main() {
 		printf("Error creating pthread 2\n");
 	}
 
-	printf("Creating Thread 3\n");
+*/
 
-	if (my_pthread_create(test_thread3, test_thread_attr, (void *(*)(void *))mutexTestOne, arguments) != 0) {
-		printf("Error creating pthread 3\n");
-	}
 
-	printf("Creating Thread 4\n");
-
-	if (my_pthread_create(test_thread4, test_thread_attr, (void *(*)(void *))mutexTestTwo, arguments) != 0) {
-		printf("Error creating pthread 4\n");
-	}
-
-	printf("Creating Thread 5\n");
-
-	if (my_pthread_create(test_thread5, test_thread_attr, (void *(*)(void *))noMutexTestOne, arguments) != 0) {
-		printf("Error creating pthread 3\n");
-	}
-
-	printf("Creating Thread 6\n");
-
-	if (my_pthread_create(test_thread6, test_thread_attr, (void *(*)(void *))noMutexTestTwo, arguments) != 0) {
-		printf("Error creating pthread 4\n");
-	}
 	/*printf("Stack Size: %li\n", sched->num_sched);
 	sched_thread = sched_pickThread();
 //	sched->thr_cur = sched_thread;
@@ -782,7 +645,50 @@ int main() {
 	//free(thr_array);
 	//free(thr_attr_array);
 
+//	while(1);
+
+	time_t t;
+	long int i;
+	long int base = 100;
+	long int random[NUM_THREADS];
+	long int random_sec[NUM_THREADS];
+
+	sched_init();
+	srand((unsigned) time(&t));
+
+	for (i = 0; i < NUM_THREADS; i++) {
+		random[i] = rand() % 1000 * base;
+		printf("Random Number %li\n", random[i]);
+	}	
+
+
+	mypthread_attr_t * thread_attr = NULL;
+	thr_list = malloc(NUM_THREADS * sizeof(mypthread_t));
+	for (i = 0; i < NUM_THREADS; i++) {
+		if (my_pthread_create(&thr_list[i], thread_attr, (void *(*)(void *))test, (void *)random[i]) != 0) {
+			printf("Error Creating Thread %li\n", i);
+		}
+	}
+
+	mypthread_t * addThread;
+	addThread = malloc(sizeof(mypthread_t));
+	if (my_pthread_create(addThread, thread_attr, (void *(*)(void *))more_Threads, NULL) != 0) {
+		printf("Error Creating More Threads\n)");
+	}
+
 	while(1);
+
+	for (i = 0; i < NUM_THREADS; i++) {
+		random[i] = rand() % 1000 * base;
+		printf("Random Number %li\n", random_sec[i]);
+	}
+
+	thr_list_second = malloc(NUM_THREADS * sizeof(mypthread_t));
+	for (i = 0; i < NUM_THREADS; i++) {
+		if (my_pthread_create(&thr_list[i], thread_attr, (void *(*)(void *))test, (void *)random_sec[i]) != 0) {
+			printf("Error Creating Thread %li\n", i);
+		}
+	}
 
 	return 0;
 }
