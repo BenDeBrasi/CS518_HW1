@@ -126,7 +126,8 @@ void scheduler_handler(){
 		if(tmp->time_runs >= sched->prior_list[old_priority] || tmp->thr_state == YIELD || tmp->thr_state == TERMINATED 
 			|| tmp->thr_state == WAITING){
 			if (tmp->thr_state == TERMINATED){
-				free(tmp);
+				//do nothing for the test
+				//free(tmp);
 			}else if(tmp->thr_state == WAITING){
 				//do nothing, the thread is already in the wait queue of the mutex
 			}else if(tmp->thr_state == YIELD){
