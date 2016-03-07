@@ -20,7 +20,9 @@
 #define STACK_SIZE 16384
 #define NUM_LEVELS 5
 #define NUM_LOCKS 1
-#define TIME_QUANTUM 50000   
+#define TIME_QUANTUM 50000
+#define AGE_THRESHOLD 1000000
+#define CHECK_FREQUENCY 10
 
 
 // DEFINING THREAD STATES
@@ -67,6 +69,7 @@ typedef struct mypthread_t {
 	int priority;
 	void * retval;
 	long int start_tt;
+	long int first_exe_tt;
 	long int last_exe_tt;
 	long int end_tt;
 } mypthread_t;

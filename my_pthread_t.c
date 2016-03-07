@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 static long int thr_id = 0;
-static long int age_threshold = 1000000; // microsecond
+static long int check_flag = 0;
 static scheduler * sched;
 static mypthread_t * thr_list;
 static my_pthread_mutex_t* mutex1;
@@ -89,6 +89,34 @@ void scheduler_handler(){
     tick.it_interval.tv_sec = 0;
     tick.it_interval.tv_usec = 0;
     setitimer(ITIMER_REAL, &tick, NULL);
+
+    //perform aging
+    if(check_flag++ >= CHECK_FREQUENCY){
+    	int i;
+    	check_flag = 0;
+    	long int current_time = get_time_stamp();
+    	for (i = 1; i < NUM_LEVELS; i++) {
+			if (sched->mlpq[i].head != NULL) {
+				mypthread_t* tmp = sched->mlpq[i].head;
+				mypthread_t* parent = NULL;
+				while(tmp != NULL){
+					if(current_time - tmp->last_exe_tt >= AGE_THRESHOLD){
+						//delete from current queue
+						if(parent == NULL){
+							sched->mlpq[i].head = tmp->next_thr;
+						}else{
+							parent->next_thr = tmp->next_thr;
+						}
+						//put the thread to the highest queue
+						sched_addThread(tmp, 0);
+					}else{
+						parent = tmp;
+					}
+					tmp = tmp->next_thr;
+				}
+			}
+		}
+    }
     
     //schelduling
     mypthread_t* tmp = sched->thr_cur;
@@ -132,6 +160,10 @@ void scheduler_handler(){
 	//}
     
     if(sched->thr_cur != NULL){
+    	if(sched->thr_cur->first_exe_tt == 0){
+    		sched->thr_cur->first_exe_tt = get_time_stamp();
+    	}
+    	sched->thr_cur->last_exe_tt = get_time_stamp();
     	if( tmp != NULL)
     		swapcontext(&(tmp->ucp), &(sched->thr_cur->ucp));
     	else
@@ -237,6 +269,7 @@ void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
 		thr_node->thr_state = TERMINATED;
 //		sched->num_sched--;
 	}
+	sched->thr_cur->end_tt=get_time_stamp();
 	scheduler_handler();
 }
 
@@ -265,6 +298,8 @@ int my_pthread_create(mypthread_t * thread, mypthread_attr_t * attr, void *(*fun
 	thread->ucp.uc_stack.ss_size = STACK_SIZE;
 	//thread->ucp.uc_link = &sched_ctx;//&(sched->thr_main->ucp);
 	thread->thr_id = thr_id++;
+	thread->start_tt = get_time_stamp();
+	thread->first_exe_tt = 0;
 	printf("Allocating the stack\n");
 	makecontext(&(thread->ucp), (void *)run_thread, 3, thread, function, arg);
 	printf("Made Context\n");
@@ -308,7 +343,7 @@ void my_pthread_exit(void * value_ptr) {
 	}
 	sched->thr_cur->thr_state = TERMINATED;
 	sched->thr_cur->retval = value_ptr;
-
+	sched->thr_cur->end_tt=get_time_stamp();
 	// call the scheduler
 	scheduler_handler();
 
@@ -743,8 +778,6 @@ int main() {
 
 	//free(thr_array);
 	//free(thr_attr_array);
-	long int test= get_time_stamp();
-	printf("timestamp: %ld\n", test);
 
 	while(1);
 
