@@ -129,6 +129,9 @@ void scheduler_handler(){
 				free(tmp);
 			}else if(tmp->thr_state == WAITING){
 				//do nothing, the thread is already in the wait queue of the mutex
+			}else if(tmp->thr_state == YIELD){
+				//put the thread back into the original queue
+				sched_addThread(tmp, tmp->priority);
 			}else{
 				//put the thread back into the queue with the lower priority
 				int new_priority = (tmp->priority+1) > (NUM_LEVELS-1) ? (NUM_LEVELS-1) : (tmp->priority+1);
