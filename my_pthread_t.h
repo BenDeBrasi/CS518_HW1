@@ -18,7 +18,7 @@
 
 #define NUM_THREADS 10
 #define STACK_SIZE 16384
-#define NUM_LEVELS 1
+#define NUM_LEVELS 16
 #define NUM_LOCKS 1
 #define TIME_QUANTUM 50000
 #define AGE_THRESHOLD 2000000
