@@ -636,10 +636,22 @@ void test_normal_bench(){
 
 	mypthread_attr_t * thread_attr = NULL;
 	thr_list = malloc(NUM_THREADS * sizeof(mypthread_t));
-	for (i = 0; i < NUM_THREADS; i++) {
+	for (i = 0; i < NUM_THREADS-4; i++) {
 		if (my_pthread_create(&thr_list[i], thread_attr, (void *(*)(void *))test, (void *)random[i]) != 0) {
 			printf("Error Creating Thread %li\n", i);
 		}
+	}
+	if (my_pthread_create(&thr_list[NUM_THREADS-4], thread_attr, (void *(*)(void *))mutexTestOne, NULL)) {
+			printf("Error Creating Thread %li\n", NUM_THREADS-4);
+	}
+	if (my_pthread_create(&thr_list[NUM_THREADS-3], thread_attr, (void *(*)(void *))mutexTestTwo, NULL)) {
+			printf("Error Creating Thread %li\n", NUM_THREADS-3);
+	}
+	if (my_pthread_create(&thr_list[NUM_THREADS-2], thread_attr, (void *(*)(void *))noMutexTestOne, NULL)) {
+			printf("Error Creating Thread %li\n", NUM_THREADS-2);
+	}
+	if (my_pthread_create(&thr_list[NUM_THREADS-1], thread_attr, (void *(*)(void *))noMutexTestTwo, NULL)) {
+			printf("Error Creating Thread %li\n", NUM_THREADS-1);
 	}
 }
 
