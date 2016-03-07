@@ -92,6 +92,7 @@ void scheduler_handler(){
 
     //perform aging
     if(check_flag++ >= CHECK_FREQUENCY){
+    	printf("Start scaling up threads...\n");
     	int i;
     	check_flag = 0;
     	long int current_time = get_time_stamp();
@@ -101,6 +102,7 @@ void scheduler_handler(){
 				mypthread_t* parent = NULL;
 				while(tmp != NULL){
 					if(current_time - tmp->last_exe_tt >= AGE_THRESHOLD){
+						printf("Find one candidate, its thread id is: %d\n", tmp->thr_id);
 						//delete from current queue
 						if(parent == NULL){
 							sched->mlpq[i].head = tmp->next_thr;
@@ -108,6 +110,7 @@ void scheduler_handler(){
 							parent->next_thr = tmp->next_thr;
 						}
 						//put the thread to the highest queue
+						printf("Put thread %d to highest level.\n", tmp->thr_id);
 						sched_addThread(tmp, 0);
 					}else{
 						parent = tmp;
@@ -116,6 +119,7 @@ void scheduler_handler(){
 				}
 			}
 		}
+		printf("Finish scaling up threads...\n");
     }
     
     //schelduling
@@ -273,7 +277,9 @@ void run_thread(mypthread_t * thr_node, void *(*f)(void *), void * arg) {
 		thr_node->thr_state = TERMINATED;
 //		sched->num_sched--;
 	}
-	sched->thr_cur->end_tt=get_time_stamp();
+	if(sched->thr_cur != NULL){
+		sched->thr_cur->end_tt=get_time_stamp();
+	}
 	scheduler_handler();
 }
 
