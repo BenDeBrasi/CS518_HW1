@@ -268,7 +268,7 @@ mypthread_t * sched_pickThread() {
 
     
     for (i = 0; i < NUM_THREADS; i++) {
-		printf("Response time of %d is : %ld\n", i, ( (&thr_list[i])->end_tt  - (&thr_list[i])->start_tt) );
+		printf("Response time of %d is : %ld\n", i, ( (&thr_list[i])->first_exe_tt  - (&thr_list[i])->start_tt) );
 	}
 
 
